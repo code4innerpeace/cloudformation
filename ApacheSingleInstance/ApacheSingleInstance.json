@@ -1,0 +1,458 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "This template creates VPC, starts Amazon Linux Server, Installs httpd24 packages and Create sample index.html page.",
+	"Metadata": {
+		"AWS::CloudFormation::Interface": {
+			"ParameterGroups": [
+        {
+					"Label": {
+						"default": "General"
+					},
+					"Parameters": ["ProjectName"]
+				},
+				{
+					"Label": {
+						"default": "VPC Configuration"
+					},
+					"Parameters": ["CidrBlock", "EnableDnsSupport", "EnableDnsHostnames", "InstanceTenancy"]
+				},
+        {
+					"Label": {
+						"default": "Public Subnet Configuration"
+					},
+					"Parameters": ["PublicSubnetAvailabilityZone", "PublicSubnetCidrBlock", "PublicSubnetMapPublicIpOnLaunch"]
+				},
+        {
+					"Label": {
+						"default": "Apache Instance Security Group Configuration"
+					},
+					"Parameters": ["ApacheInstanceSSHSecurityGroupIngressCidrIp", "ApacheInstanceHttpSecurityGroupIngressCidrIp"]
+				},
+				{
+					"Label": {
+						"default": "Apache Instance Configuration"
+					},
+					"Parameters": ["ApacheInstanceInstanceType", "ApacheInstanceSSHKeyName"]
+				}
+			],
+			"ParameterLabels": {
+				"ProjectName": {
+					"default": "Project Name"
+				},
+				"CidrBlock": {
+					"default": "VPC CidrBlock"
+				},
+				"EnableDnsSupport": {
+					"default": "Enable DNS Support ?"
+				},
+				"EnableDnsHostnames": {
+					"default": "Enable DNS Support ?"
+				},
+				"InstanceTenancy": {
+					"default": "Instance Tenancy"
+				},
+        "PublicSubnetAvailabilityZone" : {
+          "default": "Public Subnet AvailabilityZone"
+        },
+        "PublicSubnetCidrBlock" : {
+          "default": "Public Subnet CIDR block"
+        },
+        "PublicSubnetMapPublicIpOnLaunch" : {
+          "default": "Assign public ip to instances in this subnet ?"
+        },
+        "ApacheInstanceSSHSecurityGroupIngressCidrIp" : {
+          "default": "Ip address from which SSH into Apache Instance must be allowed"
+        },
+        "ApacheInstanceHttpSecurityGroupIngressCidrIp" : {
+          "default": "Ip address from which HTTP to Apache Instance must be allowed"
+        }
+			}
+		}
+	},
+  "Mappings": {
+    "AWSInstanceType2Arch" : {
+      "t2.micro"    : {
+          "Arch" : "HVM64"
+      }
+    },
+    "AWSRegionArch2AMI" : {
+       "us-east-1"  : {
+         "HVM64" : "ami-1853ac65"
+       }
+
+    }
+  },
+	"Parameters": {
+		"ProjectName": {
+			"AllowedPattern": "[A-Za-z0-9_]+",
+			"ConstraintDescription": "Only alphanumeric characters and underscore. MinLength: 5, MaxLength: 20",
+			"Default": "VijayTest",
+			"MaxLength": 20,
+			"MinLength": 5,
+			"Type": "String"
+		},
+		"CidrBlock": {
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(1[6-9]|2[0-8])",
+			"ConstraintDescription": "VPC Cidr Block should be like 192.168.1.0/24. The CIDR block allowed are from 16-28.",
+			"Default": "192.168.99.0/24",
+			"Description": "VPC CIDR Block",
+			"Type": "String"
+		},
+		"EnableDnsSupport": {
+			"AllowedValues": ["true", "false"],
+			"Default": "true",
+			"Description": "Enable DNS Support for VPC.",
+			"Type": "String"
+		},
+		"EnableDnsHostnames": {
+			"AllowedValues": ["true", "false"],
+			"Default": "false",
+			"Description": "Enable DNS Hostnames for VPC.",
+			"Type": "String"
+		},
+		"InstanceTenancy": {
+			"AllowedValues": ["default", "dedicated"],
+			"Default": "default",
+			"Description": "VPC Instance Tenancy.",
+			"Type": "String"
+		},
+    "PublicSubnetAvailabilityZone" : {
+      "Default" : "us-east-1a",
+      "Description" : "Public Subnet AZ. Select AZ based on the region.",
+      "Type": "String"
+    },
+    "PublicSubnetCidrBlock" : {
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(1[6-9]|2[0-8])",
+			"ConstraintDescription": "Subnet Cidr Block should be a block within VPC Cidr Block.",
+			"Default": "192.168.99.0/26",
+			"Description": "Subnet CIDR Block",
+			"Type": "String"
+    },
+    "PublicSubnetMapPublicIpOnLaunch" : {
+      "AllowedValues": ["false", "true"],
+			"Default": "false",
+			"Description": "Assign public ip addresses to instances launched in this subnet",
+			"Type": "String"
+    },
+    "ApacheInstanceSSHSecurityGroupIngressCidrIp" : {
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/([0-9]|[12][0-9]|3[0-2])",
+			"ConstraintDescription": "ip address must be like 1.2.3.4/32.",
+			"Default": "1.2.3.4/32",
+			"Description": "Ip address from which SSH into Apache Instance must be allowed",
+			"Type": "String"
+    },
+    "ApacheInstanceHttpSecurityGroupIngressCidrIp" : {
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/([0-9]|[12][0-9]|3[0-2])",
+			"ConstraintDescription": "ip address must be like 1.2.3.4/32.",
+			"Default": "1.2.3.4/32",
+			"Description": "Ip address from which http to Apache Instance must be allowed",
+			"Type": "String"
+    },
+    "ApacheInstanceInstanceType" : {
+      "AllowedValues" : [ "t2.micro"],
+      "ConstraintDescription" : "Valid EC2 instance type.",
+      "Default": "t2.micro",
+      "Description": "Apache Instance Ec2 Instance type.",
+			"Type": "String"
+    },
+    "ApacheInstanceSSHKeyName" : {
+      "Default": "VijayTest",
+      "Description": "Apache Instance Ec2 SSH key Name.",
+			"Type": "String"
+    }
+	},
+	"Resources": {
+		"VPC": {
+			"Type": "AWS::EC2::VPC",
+			"Properties" : {
+
+        "CidrBlock": {
+  				"Ref": "CidrBlock"
+  			},
+  			"EnableDnsSupport": {
+  				"Ref": "EnableDnsSupport"
+  			},
+  			"EnableDnsHostnames": {
+  				"Ref": "EnableDnsHostnames"
+  			},
+  			"InstanceTenancy": {
+  				"Ref": "InstanceTenancy"
+  			},
+  			"Tags": [{
+  				"Key": "Name",
+  				"Value": {
+              "Fn::Join" : [
+                "_",
+                [
+                  {
+                    "Ref" : "ProjectName"
+                  },
+                  "VPC"
+                ]
+              ]
+  				}
+  			}]
+      }
+		},
+    "PublicSubnet" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Ref" : "PublicSubnetAvailabilityZone"},
+        "CidrBlock" : { "Ref" : "PublicSubnetCidrBlock"},
+        "MapPublicIpOnLaunch" : { "Ref" : "PublicSubnetMapPublicIpOnLaunch" },
+        "VpcId" : { "Ref" : "VPC"},
+        "Tags": [{
+  				"Key": "Name",
+  				"Value": {
+              "Fn::Join" : [
+                "_",
+                [
+                  {
+                    "Ref" : "ProjectName"
+                  },
+                  "PublicAZA"
+                ]
+              ]
+  				}
+  			}]
+      }
+    },
+		"PublicSubnetRT": {
+			"Type" : "AWS::EC2::RouteTable",
+   		"Properties" : {
+      		"VpcId" : { "Ref" : "VPC"},
+					"Tags": [{
+	  				"Key": "Name",
+	  				"Value": {
+	              "Fn::Join" : [
+	                "_",
+	                [
+	                  {
+	                    "Ref" : "ProjectName"
+	                  },
+	                  "PublicSubet_RT"
+	                ]
+	              ]
+	  				}
+	  			}]
+			}
+		},
+		"PublicSubnetRoute" : {
+			"Type" : "AWS::EC2::Route",
+			"Properties" : {
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"GatewayId" : { "Ref" : "IGW" },
+				"RouteTableId" : { "Ref" : "PublicSubnetRT" }
+			}
+		},
+		"PublicSubnetRouteTableAssociation" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+	    "Properties" : {
+	    	"RouteTableId" : { "Ref" : "PublicSubnetRT" },
+	    	"SubnetId" : { "Ref" : "PublicSubnet" }
+	    }
+		},
+		"IGW" : {
+			"Type" : "AWS::EC2::InternetGateway",
+   		"Properties" : {
+				"Tags": [{
+  				"Key": "Name",
+  				"Value": {
+              "Fn::Join" : [
+                "_",
+                [
+                  {
+                    "Ref" : "ProjectName"
+                  },
+                  "igw"
+                ]
+              ]
+  				}
+  			}]
+   		}
+		},
+		"InternetGatewayAttachment" : {
+			"Type" : "AWS::EC2::VPCGatewayAttachment",
+	    "Properties" : {
+	      "InternetGatewayId" : { "Ref" : "IGW" },
+	      "VpcId" : { "Ref" : "VPC"}
+
+	    }
+		},
+    "ApacheInstanceSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupName" : {
+          "Fn::Join" : [
+            "_",
+            [
+              {
+                "Ref" : "ProjectName"
+              },
+              "ApacheInstanceSG"
+            ]
+          ]
+        },
+        "GroupDescription" : "Apache Instance Security Group",
+        "SecurityGroupIngress" : [
+          {"IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : { "Ref" : "ApacheInstanceSSHSecurityGroupIngressCidrIp"}},
+          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : { "Ref" : "ApacheInstanceHttpSecurityGroupIngressCidrIp"}}
+        ],
+        "VpcId" : { "Ref" : "VPC" }
+      }
+    },
+    "ApacheInstance" : {
+      "Type" : "AWS::EC2::Instance",
+			"Metadata" : {
+				"Comment1" : "Install Apache httpd24 package.",
+				"Comment2" : "Creates index.html page.",
+				"AWS::CloudFormation::Init" : {
+					"configSets" : {
+							"ApacheInstallation" : [ "YumUpdate", "InstallPackages", "ApacheSetup" ]
+					},
+					"YumUpdate" : {
+							"commands" : {
+								"01_yum_update" : {
+									"command" : "yum update -y"
+								}
+							}
+					},
+					"InstallPackages" : {
+						"packages" : {
+							"yum" : {
+								"httpd24" : []
+							}
+						}
+					},
+					"ApacheSetup" : {
+							"commands" : {
+								"01_enable_httpd_on_bootup" : {
+									"command" : "chkconfig httpd on"
+								},
+								"02_ec2_user_to_apache_group" : {
+									"command" : "usermod -a -G apache ec2-user"
+								},
+								"03_change_ownership_of_varwww" : {
+									"command" : "chown -R ec2-user:apache /var/www"
+								},
+								"04_change_varwww_dir_permissions" : {
+									"command" : "chmod 2775 /var/www"
+								},
+								"05_change_varwww_subdirectories_permissions" : {
+									"command" : "find /var/www -type d -exec sudo chmod 2775 {} \\;"
+								},
+								"06_change_varwww_files_permissions" : {
+									"command" : "find /var/www -type f -exec sudo chmod 0664 {} \\;"
+								},
+								"07_start_httpd" : {
+									"command" : "service httpd start"
+								}
+							},
+							"files" : {
+								"/var/www/html/index.html" : {
+										"content" : { "Fn::Join" : [ "",
+												[
+													"<html>\n",
+													"  <head>\n",
+													"    <title>VijayTest CloudFormation</title>\n",
+													"    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+													"  </head>\n",
+													"  <body>\n",
+													"    <h1>Welcome to the Vijay Test CloudFormation</h1>\n",
+													"  </body>\n",
+													"</html>\n"
+												]
+											]
+										},
+										"group" : "apache",
+										"owner" : "ec2-user",
+										"mode" : "000600"
+								}
+							}
+					}
+				}
+			},
+      "Properties" : {
+					"ImageId" : { "Fn::FindInMap" : [ "AWSRegionArch2AMI", { "Ref" : "AWS::Region" },
+																 { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "ApacheInstanceInstanceType" }, "Arch" ] } ] },
+          "InstanceType" : { "Ref" : "ApacheInstanceInstanceType" },
+          "KeyName" : { "Ref" : "ApacheInstanceSSHKeyName" },
+          "NetworkInterfaces" : [
+              {
+                "GroupSet"                 : [{ "Ref" : "ApacheInstanceSG" }],
+                "AssociatePublicIpAddress" : "true",
+                "DeviceIndex"              : "0",
+                "DeleteOnTermination"      : "true",
+                "SubnetId"                 : { "Ref" : "PublicSubnet" }
+              }
+          ],
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+             "#!/bin/bash -xe\n",
+             "yum install -y aws-cfn-bootstrap\n",
+
+             "# Install the files and packages from the metadata\n",
+             "/opt/aws/bin/cfn-init -v ",
+             "         --stack ", { "Ref" : "AWS::StackName" },
+             "         --resource ApacheInstance ",
+             "         --configsets ApacheInstallation ",
+             "         --region ", { "Ref" : "AWS::Region" }, "\n"
+						 ]]}
+				  },
+          "Tags": [{
+    				"Key": "Name",
+    				"Value": {
+                "Fn::Join" : [
+                  "_",
+                  [
+                    {
+                      "Ref" : "ProjectName"
+                    },
+                    "PublicAZA"
+                  ]
+                ]
+    				}
+    			}]
+      }
+    }
+	},
+	"Outputs": {
+		"VPCID": {
+			"Value": {
+				"Ref": "VPC"
+			},
+			"Description": "VPC ID"
+		},
+    "PublicSubnetID": {
+      "Value": {
+        "Ref": "PublicSubnet"
+      },
+      "Description": "Public Subnet ID"
+    },
+		"PublicSubnetRTID": {
+      "Value": {
+        "Ref": "PublicSubnetRT"
+      },
+      "Description": "Public Subnet Route Table ID"
+    },
+		"InternetGatewayID": {
+      "Value": {
+        "Ref": "IGW"
+      },
+      "Description": "Internet Gateway ID"
+    },
+    "ApacheInstanceSG": {
+      "Value": {
+        "Ref": "ApacheInstanceSG"
+      },
+      "Description": "Apache Instance Security Group Id"
+    },
+    "ApacheInstancePublicIp": {
+      "Value": { "Fn::GetAtt" : [ "ApacheInstance", "PublicIp" ] },
+      "Description": "Apache Instance Public Ip"
+    },
+		"WebsiteUrl": {
+      "Value": { "Fn::Join" : ["", ["http://",{ "Fn::GetAtt" : [ "ApacheInstance", "PublicIp" ] },"/index.html"]]},
+      "Description": "Website Url"
+    }
+	}
+}
