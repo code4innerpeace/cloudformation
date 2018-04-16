@@ -1,0 +1,130 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description" : "Sample Template just for testing CloudFormation Helper Scripts",
+  "Parameters" : {
+    "ImageId" : {
+      "Description" : "AMI ID",
+      "Default" : "ami-1853ac65",
+      "Type" : "String"
+    },
+    "InstanceType" : {
+      "Description" : "Instance Type",
+      "Default" : "t2.micro",
+      "Type" : "String"
+    },
+    "KeyName" : {
+      "Description" : "SSH Key Name",
+      "Type" : "AWS::EC2::KeyPair::KeyName"
+    },
+    "SecurityGroupIds" : {
+      "Description" : "Instance Security Group Id",
+      "Type" : "List<AWS::EC2::SecurityGroup::Id>"
+    },
+    "SubnetId" : {
+      "Description" : "AMI ID",
+      "Type" : "AWS::EC2::Subnet::Id"
+    }
+
+  },
+  "Resources" : {
+    "ApacheInstance" : {
+      "Type" : "AWS::EC2::Instance",
+      "Properties" : {
+        "ImageId" : { "Ref" : "ImageId" },
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "KeyName" : { "Ref" : "KeyName" },
+        "SecurityGroupIds" : { "Ref" : "SecurityGroupIds" },
+        "SubnetId" : { "Ref" : "SubnetId" },
+        "UserData" : {
+          "Fn::Base64": {
+            "Fn::Join": ["", [
+              "#!/bin/bash -xe\n",
+							"yum update -y aws-cfn-bootstrap\n",
+
+							"yum update -y aws-cli\n",
+
+							"/opt/aws/bin/cfn-init -v ",
+							"         --stack ", {
+								"Ref": "AWS::StackName"
+							},
+							"         --resource ApacheInstance ",
+							"         --region ", {
+								"Ref": "AWS::Region"
+							}, "\n",
+
+							"/opt/aws/bin/cfn-signal -e $? ",
+							"         --stack ", {
+								"Ref": "AWS::StackName"
+							},
+							"         --resource ApacheInstance ",
+							"         --region ", {
+								"Ref": "AWS::Region"
+							}, "\n"
+            ]]
+          }
+        }
+      },
+      "Metadata" : {
+        "Comment": "Install Apache Httpd",
+        "AWS::CloudFormation::Init": {
+            "config" : {
+              "packages" : {
+                "yum" : {
+                  "httpd" : []
+                }
+              },
+              "files" : {
+                "/var/www/html/index.html": {
+                  "content": {
+                    "Fn::Join": [ "\n", [
+                      "<html>",
+                      "<body>",
+                      "<h1> VAS Vijay Sample HTTP Page for testing CloudFormation Helper scripts.</h1>",
+                      "</body>",
+                      "</html>"
+                    ]]
+                  },
+                  "mode": "000644",
+  								"owner": "root",
+  								"group": "root"
+                }
+              },
+              "services" : {
+                "sysvinit": {
+                  "httpd": {
+                    "enabled": "true",
+                    "ensureRunning": "true"
+                  }
+                }
+              }
+            }
+        }
+      },
+      "CreationPolicy" : {
+        "ResourceSignal": {
+          "Count": "1",
+          "Timeout": "PT2M"
+        }
+      }
+    }
+  },
+  "Outputs" : {
+    "ApacheInstance" : {
+        "Description" : "Apache Instance Id",
+        "Value" : { "Ref" : "ApacheInstance"}
+    },
+    "ApachePageUrl" : {
+        "Description" : "Apache Index Page Url",
+        "Value" : {
+          "Fn::Join" : [  "", [
+              "http://",
+              {
+                "Fn::GetAtt" : [ "ApacheInstance", "PublicIp"]
+              }
+            ]
+          ]
+        }
+    }
+  }
+}
+
