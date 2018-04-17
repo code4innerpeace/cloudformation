@@ -1,0 +1,208 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description" : "Sample Template just for testing CloudFormation Helper Scripts",
+  "Parameters" : {
+    "ImageId" : {
+      "Description" : "AMI ID",
+      "Default" : "ami-1853ac65",
+      "Type" : "String"
+    },
+    "InstanceType" : {
+      "Description" : "Instance Type",
+      "Default" : "t2.micro",
+      "Type" : "String"
+    },
+    "KeyName" : {
+      "Description" : "SSH Key Name",
+      "Type" : "AWS::EC2::KeyPair::KeyName"
+    },
+    "SecurityGroupIds" : {
+      "Description" : "Instance Security Group Id",
+      "Type" : "List<AWS::EC2::SecurityGroup::Id>"
+    },
+    "SubnetIds" : {
+      "Description" : "List of subnet Ids",
+      "Type" : "List<AWS::EC2::Subnet::Id>"
+    },
+    "VPCId" : {
+      "Description" : "VPCId",
+      "Type" : "AWS::EC2::VPC::Id"
+    },
+    "ELBSecurityGroupsId" : {
+      "Description" : "ELB Security Group",
+      "Type" : "List<AWS::EC2::SecurityGroup::Id>"
+    }
+
+  },
+  "Resources" : {
+    "WebLaunchConfiguration" : {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "Properties" : {
+        "AssociatePublicIpAddress" : true,
+        "ImageId" : { "Ref" : "ImageId" },
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "KeyName" : { "Ref" : "KeyName" },
+        "SecurityGroups" : { "Ref" : "SecurityGroupIds" },
+        "UserData" : {
+          "Fn::Base64": {
+            "Fn::Join": ["", [
+              "#!/bin/bash -xe\n",
+							"yum update -y aws-cfn-bootstrap\n",
+
+							"yum update -y aws-cli\n",
+
+							"/opt/aws/bin/cfn-init -v ",
+							"         --stack ", {
+								"Ref": "AWS::StackName"
+							},
+							"         --resource WebLaunchConfiguration ",
+							"         --region ", {
+								"Ref": "AWS::Region"
+							}, "\n",
+
+							"/opt/aws/bin/cfn-signal -e $? ",
+							"         --stack ", {
+								"Ref": "AWS::StackName"
+							},
+							"         --resource WebAutoScalingGroup ",
+							"         --region ", {
+								"Ref": "AWS::Region"
+							}, "\n"
+            ]]
+          }
+        }
+      },
+      "Metadata" : {
+        "Comment": "Install Apache Httpd",
+        "AWS::CloudFormation::Init": {
+            "config" : {
+              "packages" : {
+                "yum" : {
+                  "httpd" : []
+                }
+              },
+              "files" : {
+                "/var/www/html/index.html": {
+                  "content": {
+                    "Fn::Join": [ "\n", [
+                      "<html>",
+                      "<body>",
+                      "<h1> VAS Vijay Sample HTTP Page for testing CloudFormation Helper scripts.</h1>",
+                      "</body>",
+                      "</html>"
+                    ]]
+                  },
+                  "mode": "000644",
+  								"owner": "root",
+  								"group": "root"
+                }
+              },
+              "services" : {
+                "sysvinit": {
+                  "httpd": {
+                    "enabled": "true",
+                    "ensureRunning": "true"
+                  }
+                }
+              }
+            }
+        }
+      }
+    },
+    "WebAutoScalingGroup" : {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties" : {
+        "Cooldown" : 60,
+        "DesiredCapacity" : 1,
+        "MaxSize" : 1,
+        "MinSize" : 1,
+        "HealthCheckGracePeriod" : 120,
+        "LaunchConfigurationName" : { "Ref" : "WebLaunchConfiguration" },
+        "VPCZoneIdentifier" : { "Ref" : "SubnetIds" },
+        "TargetGroupARNs": [{
+					"Ref": "WebTargetGroup"
+				}]
+      },
+      "CreationPolicy": {
+				"ResourceSignal": {
+					"Timeout": "PT10M",
+					"Count": "1"
+				}
+			}
+    },
+    "WebTargetGroup" : {
+      "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties" : {
+        "HealthCheckIntervalSeconds" : 6,
+        "HealthCheckPath" : "/",
+        "HealthCheckPort" : 80,
+        "HealthCheckProtocol" : "HTTP",
+        "HealthCheckTimeoutSeconds" : 5,
+        "HealthyThresholdCount" : 2,
+        "Port" : 80,
+        "Protocol" : "HTTP",
+        "VpcId": {
+					"Ref": "VPCId"
+				}
+      }
+    },
+    "WebApplicationLoadBalancer" : {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+			"Properties": {
+				"Subnets": {
+					"Ref": "SubnetIds"
+				},
+        "SecurityGroups" : {
+          "Ref" : "ELBSecurityGroupsId"
+        }
+			}
+    },
+    "WebApplicationLoadBalancerListner" : {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+			"Properties": {
+        "DefaultActions": [{
+					"Type": "forward",
+					"TargetGroupArn": {
+						"Ref": "WebTargetGroup"
+					}
+				}],
+				"LoadBalancerArn": {
+					"Ref": "WebApplicationLoadBalancer"
+				},
+				"Port": "80",
+				"Protocol": "HTTP"
+      }
+    }
+  },
+  "Outputs" : {
+    "WebLaunchConfiguration" : {
+      "Description" : "Web Launch configuration",
+      "Value" : { "Ref" : "WebLaunchConfiguration" }
+    },
+    "WebAutoScalingGroup" : {
+      "Description" : "Web ASG",
+      "Value" : { "Ref" : "WebAutoScalingGroup" }
+    },
+    "WebTargetGroup" : {
+      "Description" : "Web ASG Target Group",
+      "Value" : { "Ref" : "WebTargetGroup" }
+    },
+    "WebApplicationLoadBalancer" : {
+      "Description" : "Web ELB",
+      "Value" : { "Ref" : "WebApplicationLoadBalancer" }
+    },
+    "WebApplicationLoadBalancerListner" : {
+      "Description" : "Web ELB Listener",
+      "Value" : { "Ref" : "WebApplicationLoadBalancerListner" }
+    },
+    "WebsiteURL" : {
+      "Description" : "Web Site",
+      "Value" : {
+        "Fn::Join" : ["",[
+            "http://",
+            { "Fn::GetAtt" : ["WebApplicationLoadBalancer","DNSName"] }
+        ]]
+      }
+    }
+  }
+}
