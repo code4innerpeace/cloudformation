@@ -1,0 +1,151 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "This template creates VPC and vpc resources and export the resources values which can be used in another stack.",
+  "Metadata" : {
+    "ParameterGroups": [
+      {
+        "Label": {
+          "default": "VPC Configuration"
+        },
+        "Parameters": ["CidrBlock", "EnableDnsSupport", "EnableDnsHostnames", "InstanceTenancy"]
+      },
+      {
+        "Label": {
+          "default": "Public Subnet Configuration Details"
+        },
+        "Parameters": ["PublicSubnetAvailabilityZone", "PublicSubnetCidrBlock", "PublicSubnetMapPublicIpOnLaunch"]
+      }
+    ],
+    "ParameterLabels": {
+      "CidrBlock": {
+        "default": "VPC CidrBlock"
+      },
+      "EnableDnsSupport": {
+        "default": "Enable DNS Support ?"
+      },
+      "EnableDnsHostnames": {
+        "default": "Enable DNS Support ?"
+      },
+      "InstanceTenancy": {
+        "default": "Instance Tenancy"
+      },
+      "PublicSubnetAvailabilityZone" : {
+        "default": "Public Subnet AvailabilityZone"
+      },
+      "PublicSubnetCidrBlock" : {
+        "default": "Public Subnet CIDR block"
+      },
+      "PublicSubnetMapPublicIpOnLaunch" : {
+        "default": "Assign public ip to instances in this subnet ?"
+      }
+    }
+  },
+  "Parameters" : {
+    "CidrBlock": {
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(1[6-9]|2[0-8])",
+			"ConstraintDescription": "VPC Cidr Block should be like 192.168.1.0/24. The CIDR block allowed are from 16-28.",
+			"Default": "192.168.99.0/24",
+			"Description": "VPC CIDR Block",
+			"Type": "String"
+		},
+		"EnableDnsSupport": {
+			"AllowedValues": ["true", "false"],
+			"Default": "true",
+			"Description": "Enable DNS Support for VPC.",
+			"Type": "String"
+		},
+		"EnableDnsHostnames": {
+			"AllowedValues": ["true", "false"],
+			"Default": "false",
+			"Description": "Enable DNS Hostnames for VPC.",
+			"Type": "String"
+		},
+		"InstanceTenancy": {
+			"AllowedValues": ["default", "dedicated"],
+			"Default": "default",
+			"Description": "VPC Instance Tenancy.",
+			"Type": "String"
+		},
+    "PublicSubnetAvailabilityZone" : {
+      "Default" : "us-east-1a",
+      "Description" : "Public Subnet AZ. Select AZ based on the region.",
+      "Type": "String"
+    },
+    "PublicSubnetCidrBlock" : {
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(1[6-9]|2[0-8])",
+			"ConstraintDescription": "Subnet Cidr Block should be a block within VPC Cidr Block.",
+			"Default": "192.168.99.0/26",
+			"Description": "Subnet CIDR Block",
+			"Type": "String"
+    },
+    "PublicSubnetMapPublicIpOnLaunch" : {
+      "AllowedValues": ["false", "true"],
+			"Default": "true",
+			"Description": "Assign public ip addresses to instances launched in this subnet",
+			"Type": "String"
+    }
+  },
+  "Resources" : {
+    "VPC" : {
+      "Type": "AWS::EC2::VPC",
+      "Properties" : {
+        "CidrBlock": { "Ref": "CidrBlock" },
+  			"EnableDnsSupport": { "Ref": "EnableDnsSupport" },
+  			"EnableDnsHostnames": { "Ref": "EnableDnsHostnames" },
+  			"InstanceTenancy": { "Ref": "InstanceTenancy" }
+      }
+    },
+    "IGW" : {
+      "Type" : "AWS::EC2::InternetGateway"
+    },
+    "InternetGatewayAttachment" : {
+      "Type" : "AWS::EC2::VPCGatewayAttachment",
+	    "Properties" : {
+	      "InternetGatewayId" : { "Ref" : "IGW" },
+	      "VpcId" : { "Ref" : "VPC"}
+	    }
+		},
+    "PublicSubnet" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "AvailabilityZone" : { "Ref" : "PublicSubnetAvailabilityZone"},
+        "CidrBlock" : { "Ref" : "PublicSubnetCidrBlock"},
+        "MapPublicIpOnLaunch" : { "Ref" : "PublicSubnetMapPublicIpOnLaunch" },
+        "VpcId" : { "Ref" : "VPC"}
+      }
+    },
+    "PublicSubnetRT" : {
+      "Type" : "AWS::EC2::RouteTable",
+   		"Properties" : {
+      		"VpcId" : { "Ref" : "VPC"}
+      }
+    },
+    "PublicSubnetRoute" : {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "DestinationCidrBlock" : "0.0.0.0/0",
+				"GatewayId" : { "Ref" : "IGW" },
+				"RouteTableId" : { "Ref" : "PublicSubnetRT" }
+      }
+    },
+    "PublicSubnetRouteTableAssociation" : {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+	    "Properties" : {
+	    	"RouteTableId" : { "Ref" : "PublicSubnetRT" },
+	    	"SubnetId" : { "Ref" : "PublicSubnet" }
+	    }
+    }
+	},
+  "Outputs" : {
+    "VPCID": {
+			"Value": { "Ref": "VPC" },
+			"Description": "VPC ID",
+      "Export" : { "Name" : {"Fn::Sub": "${AWS::StackName}-VPCID" }}
+    },
+    "PublicSubnetID": {
+			"Value": { "Ref": "PublicSubnet" },
+			"Description": "PublicSubnet ID",
+      "Export" : { "Name" : {"Fn::Sub": "${AWS::StackName}-PublicSubnetID" }}
+    }
+  }
+}
