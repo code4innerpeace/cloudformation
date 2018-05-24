@@ -1,0 +1,278 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "This template installs wordpress on single ec2 instance in public subnet.",
+	"Metadata": {
+		"AWS::CloudFormation::Interface": {
+			"ParameterGroups": [{
+					"Label": {
+						"default": "General Configuration"
+					},
+					"Parameters": ["ProjectName"]
+				},
+				{
+					"Label": {
+						"default": "VPC Configuration Details"
+					},
+					"Parameters": ["VpcId","SubnetId"]
+				},
+				{
+					"Label": {
+						"default": "Security Configuration"
+					},
+					"Parameters": ["WordpressSecurityGroupAllowHttpCIDR"]
+				},
+				{
+					"Label": {
+						"default": "EC2 Instance Details"
+					},
+					"Parameters": ["ImageId", "InstanceType", "KeyName"]
+				}
+			],
+			"ParameterLabels": {
+				"ProjectName": {
+					"default": "Project Name"
+				},
+				"VpcId": {
+					"default": "VpcId"
+				},
+        "SubnetId" : {
+          "default" : "SubnetId"
+        },
+				"ImageId": {
+					"default": "AMI ID"
+				},
+				"InstanceType": {
+					"default": "Instance Type"
+				},
+				"KeyName": {
+					"default": "SSH Key Name"
+				},
+				"WordpressSecurityGroupAllowHttpCIDR": {
+					"default": "CIDR"
+				}
+			}
+		}
+	},
+	"Parameters": {
+		"ProjectName": {
+			"AllowedPattern": "[A-Za-z0-9_]+",
+			"ConstraintDescription": "Only alphanumeric characters and underscore. MinLength: 5, MaxLength: 20",
+			"Default": "VijayTest",
+			"MaxLength": 20,
+			"MinLength": 5,
+			"Type": "String"
+		},
+		"ImageId": {
+			"Type": "AWS::EC2::Image::Id",
+			"Default": "ami-14c5486b",
+			"Description": "Amazon Linux AMI 2018.03.0 (HVM), SSD Volume Type. Region 'us-east-1'"
+		},
+		"InstanceType": {
+			"Type": "String",
+			"Default": "t2.micro",
+			"AllowedValues": ["t2.nano", "t2.micro", "t2.small"],
+			"Description": "Instance types. Default 't2.micro'"
+		},
+		"KeyName": {
+			"Type": "AWS::EC2::KeyPair::KeyName",
+			"Description": "SSH key name used to log into the instance."
+		},
+		"WordpressSecurityGroupAllowHttpCIDR": {
+			"Type": "String",
+			"Default": "1.2.3.4/32",
+			"AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/([0-9]|[12][0-9]|3[0-2])",
+			"ConstraintDescription": "ip address must be like 1.2.3.4/32.",
+			"Description": "Ip address from which http traffci to wordpress instance must be allowed"
+		},
+		"SubnetId": {
+			"Type": "AWS::EC2::Subnet::Id",
+			"Description": "Subnet Id in which instance must be started."
+		},
+		"VpcId": {
+			"Type": "AWS::EC2::VPC::Id",
+			"Description": "VPC Id"
+		}
+	},
+	"Resources": {
+		"WordpressEC2Instance": {
+			"Type": "AWS::EC2::Instance",
+			"Metadata": {
+				"AWS::CloudFormation::Init": {
+					"configSets": {
+						"wordpress_install": [
+							"install_apache"
+						]
+					},
+					"install_apache": {
+						"commands": {
+							"yum_update": {
+								"command": "yum update -y"
+							},
+							"enable_httpd_on_bootup": {
+								"command": "chkconfig httpd on"
+							},
+							"add_ec2_user_to_apache_group": {
+								"command": "usermod -a -G apache ec2-user"
+							},
+							"change_ownership_of_varwww_dir": {
+								"command": "chown -R ec2-user:apache /var/www"
+							},
+							"change_varwww_dir_permissions": {
+								"command": "chmod 2775 /var/www"
+							},
+							"change_varwww_subdir_permissions": {
+								"command": "find /var/www -type d -exec sudo chmod 2775 {} \\;"
+							},
+							"change_varwww_file_permissions": {
+								"command": "find /var/www -type f -exec sudo chmod 0664 {} \\;"
+							}
+						},
+						"files": {
+							"/var/www/html/index.html": {
+								"content": {
+									"Fn::Join": ["", [
+										"<html>\n",
+										"  <head>\n",
+										"    <title>VijayTest CloudFormation Wordpress instance</title>\n",
+										"    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+										"  </head>\n",
+										"  <body>\n",
+										"    <h1>Welcome to the Vijay Wordpress instance</h1>\n",
+										"  </body>\n",
+										"</html>\n"
+									]]
+								},
+								"group": "apache",
+								"owner": "ec2-user",
+								"mode": "000600"
+							}
+						},
+						"packages": {
+							"yum": {
+								"httpd24": []
+							}
+						},
+						"services": {
+							"sysvinit": {
+								"httpd": {
+									"enabled": true,
+									"ensureRunning": true
+								}
+							}
+						}
+					}
+				}
+			},
+			"Properties": {
+				"ImageId": {
+					"Ref": "ImageId"
+				},
+				"InstanceType": {
+					"Ref": "InstanceType"
+				},
+				"KeyName": {
+					"Ref": "KeyName"
+				},
+				"SecurityGroupIds": [{
+					"Fn::GetAtt": ["WordpressEC2InstanceSecurityGroup", "GroupId"]
+				}],
+				"SubnetId": {
+					"Ref": "SubnetId"
+				},
+				"UserData": {
+					"Fn::Base64": {
+						"Fn::Join": ["", [
+							"#!/bin/bash -xe\n",
+							"yum install -y aws-cfn-bootstrap\n",
+
+							"# Install the files and packages from the metadata\n",
+							"/opt/aws/bin/cfn-init -v ",
+							"         --stack ", {
+								"Ref": "AWS::StackName"
+							},
+							"         --resource WordpressEC2Instance ",
+							"         --configsets wordpress_install ",
+							"         --region ", {
+								"Ref": "AWS::Region"
+							}, "\n",
+              "/opt/aws/bin/cfn-signal -e $? ",
+							"         --stack ", {
+								"Ref": "AWS::StackName"
+							},
+							"         --resource WordpressEC2Instance ",
+							"         --region ", {
+								"Ref": "AWS::Region"
+							}, "\n"
+						]]
+					}
+				},
+				"Tags": [{
+					"Key": "Name",
+					"Value": {
+						"Fn::Join": ["_", [{
+							"Ref": "ProjectName"
+						}, "wordpress_ec2_instance"]]
+					}
+				}]
+			},
+			"CreationPolicy": {
+				"ResourceSignal": {
+					"Timeout": "PT1M"
+				}
+			}
+		},
+		"WordpressEC2InstanceSecurityGroup": {
+			"Type": "AWS::EC2::SecurityGroup",
+			"Properties": {
+				"GroupName": "wordpress_ec2_instance_sg",
+				"GroupDescription": "wordpress ec2 instance security group",
+				"SecurityGroupIngress": [{
+					"IpProtocol": "tcp",
+					"FromPort": "80",
+					"ToPort": "80",
+					"CidrIp": {
+						"Ref": "WordpressSecurityGroupAllowHttpCIDR"
+					}
+				}],
+				"Tags": [{
+					"Key": "Name",
+					"Value": {
+						"Fn::Join": [
+							"_", [{
+									"Ref": "ProjectName"
+								},
+								"wordpress_ec2_instance_sg"
+							]
+						]
+					}
+				}],
+				"VpcId": {
+					"Ref": "VpcId"
+				}
+			}
+		}
+	},
+	"Outputs": {
+		"WordpressEC2InstanceSecurityGroup": {
+			"Value": {
+				"Ref": "WordpressEC2InstanceSecurityGroup"
+			}
+		},
+		"WordpressEC2InstanceInstanceId": {
+			"Value": {
+				"Ref": "WordpressEC2Instance"
+			}
+		},
+		"WordpressEC2InstancePublicip": {
+			"Value": {
+				"Fn::GetAtt": ["WordpressEC2Instance", "PublicIp"]
+			}
+		},
+		"WordpressEC2InstancePrivateip": {
+			"Value": {
+				"Fn::GetAtt": ["WordpressEC2Instance", "PrivateIp"]
+			}
+		}
+
+	}
+}
