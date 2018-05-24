@@ -100,7 +100,8 @@
 				"AWS::CloudFormation::Init": {
 					"configSets": {
 						"wordpress_install": [
-							"install_apache"
+							"install_apache",
+              "install_php"
 						]
 					},
 					"install_apache": {
@@ -160,7 +161,39 @@
 								}
 							}
 						}
-					}
+					},
+          "install_php" : {
+            "commands" : {
+              "restart_apache" : {
+                "command" : "service httpd restart"
+              }
+            },
+            "files" : {
+              "/var/www/html/phptest.php": {
+                "content" : {
+                  "Fn::Join": ["", [
+										"<html>\n",
+										"  <head>\n",
+										"    <title>VijayTest CloudFormation Wordpress instance</title>\n",
+										"    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+										"  </head>\n",
+										"  <body>\n",
+										"    <?php echo '<p>This is Hello World test page for php.</p>'; ?> ",
+										"  </body>\n",
+										"</html>\n"
+									]]
+                },
+                "group": "apache",
+                "owner": "ec2-user",
+                "mode": "000664"
+              }
+            },
+            "packages" : {
+              "yum" : {
+                "php70": []
+              }
+            }
+          }
 				}
 			},
 			"Properties": {
@@ -217,7 +250,7 @@
 			},
 			"CreationPolicy": {
 				"ResourceSignal": {
-					"Timeout": "PT1M"
+					"Timeout": "PT2M"
 				}
 			}
 		},
@@ -226,14 +259,20 @@
 			"Properties": {
 				"GroupName": "wordpress_ec2_instance_sg",
 				"GroupDescription": "wordpress ec2 instance security group",
-				"SecurityGroupIngress": [{
-					"IpProtocol": "tcp",
-					"FromPort": "80",
-					"ToPort": "80",
-					"CidrIp": {
-						"Ref": "WordpressSecurityGroupAllowHttpCIDR"
-					}
-				}],
+				"SecurityGroupIngress": [
+          {
+					       "IpProtocol": "tcp",
+					       "FromPort": "80",
+					       "ToPort": "80",
+					       "CidrIp": { "Ref": "WordpressSecurityGroupAllowHttpCIDR" }
+				  },
+          {
+					       "IpProtocol": "tcp",
+					       "FromPort": "22",
+					       "ToPort": "22",
+					       "CidrIp": { "Ref": "WordpressSecurityGroupAllowHttpCIDR" }
+				  }
+        ],
 				"Tags": [{
 					"Key": "Name",
 					"Value": {
