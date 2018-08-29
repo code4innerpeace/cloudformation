@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS WAF Struts CVE 2018-11776
+Parameters:
+  StackScope:
+    Type: String
+    Description: "'Regional' for ALB, 'Global' for CloudFront"
+    AllowedValues:
+      - Global
+      - Regional
+    Default: Regional
+Conditions:
+  isRegional: !Equals [ !Ref StackScope, Regional ]
+  isGlobal: !Equals [ !Ref StackScope, Global ]
+Resources:
+  GlobalURIOGNLStartStringCondition:
+    Type: AWS::WAF::ByteMatchSet
+    Condition: isGlobal
+    Properties:
+      Name: URIOGNLStartStringFilter
+      ByteMatchTuples:
+        - FieldToMatch:
+            Type: URI
+          PositionalConstraint: CONTAINS
+          TargetString: '${'
+          TextTransformation: URL_DECODE
+  RegionalURIOGNLStartStringCondition:
+    Type: AWS::WAFRegional::ByteMatchSet
+    Condition: isRegional
+    Properties:
+      Name: URIOGNLStartStringFilter
+      ByteMatchTuples:
+        - FieldToMatch:
+            Type: URI
+          PositionalConstraint: CONTAINS
+          TargetString: '${'
+          TextTransformation: URL_DECODE
+  GlobalURIStringMemberAccess:
+    Type: AWS::WAF::ByteMatchSet
+    Condition: isGlobal
+    Properties:
+      Name: URIStringMemberAccessFilter
+      ByteMatchTuples:
+        - FieldToMatch:
+            Type: URI
+          PositionalConstraint: CONTAINS
+          TargetString: _memberAccess['allowStaticMethodAccess']=true
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: URI
+          PositionalConstraint: CONTAINS
+          TargetString: _memberAccess["allowStaticMethodAccess"]=true
+          TextTransformation: URL_DECODE
+  RegionalURIStringMemberAccess:
+    Type: AWS::WAFRegional::ByteMatchSet
+    Condition: isRegional
+    Properties:
+      Name: URIStringMemberAccessFilter
+      ByteMatchTuples:
+        - FieldToMatch:
+            Type: URI
+          PositionalConstraint: CONTAINS
+          TargetString: _memberAccess['allowStaticMethodAccess']=true
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: URI
+          PositionalConstraint: CONTAINS
+          TargetString: _memberAccess["allowStaticMethodAccess"]=true
+          TextTransformation: URL_DECODE
+  GStrutsCVE201811766Rule:
+    Type: AWS::WAF::Rule
+    Condition: isGlobal
+    Properties:
+      MetricName: GStrutsCVE201811766Rule
+      Name: GStrutsCVE201811766Rule
+      Predicates:
+        - Type: ByteMatch
+          Negated: false
+          DataId: !Ref GlobalURIOGNLStartStringCondition
+        - Type: ByteMatch
+          Negated: false
+          DataId: !Ref GlobalURIStringMemberAccess
+  RStrutsCVE201811766Rule:
+    Type: AWS::WAFRegional::Rule
+    Condition: isRegional
+    Properties:
+      MetricName: RStrutsCVE201811766Rule
+      Name: RStrutsCVE201811766Rule
+      Predicates:
+        - Type: ByteMatch
+          Negated: false
+          DataId: !Ref RegionalURIOGNLStartStringCondition
+        - Type: ByteMatch
+          Negated: false
+          DataId: !Ref RegionalURIStringMemberAccess
+  GStrutsCVE201811766WebACL:
+    Type: "AWS::WAF::WebACL"
+    Condition: isGlobal
+    Properties:
+      DefaultAction:
+        Type: "ALLOW"
+      MetricName: GStrutsCVE201811766
+      Name: GStrutsCVE201811766
+      Rules:
+        - Action:
+            Type: "BLOCK"
+          Priority: 1
+          RuleId: !Ref GStrutsCVE201811766Rule
+  RStrutsCVE201811766WebACL:
+    Type: "AWS::WAFRegional::WebACL"
+    Condition: isRegional
+    Properties:
+      DefaultAction:
+        Type: "ALLOW"
+      MetricName: RStrutsCVE201811766
+      Name: RStrutsCVE201811766
+      Rules:
+        - Action:
+            Type: "BLOCK"
+          Priority: 1
+          RuleId: !Ref RStrutsCVE201811766Rule
+Outputs:
+  GlobalURIOGNLStartStringConditionID:
+    Condition: isGlobal
+    Value: !Ref GlobalURIOGNLStartStringCondition
+  RegionalURIOGNLStartStringConditionID:
+    Condition: isRegional
+    Value: !Ref RegionalURIOGNLStartStringCondition
+  GlobalURIStringMemberAccessID:
+    Condition: isGlobal
+    Value: !Ref GlobalURIStringMemberAccess
+  RegionalURIStringMemberAccessID:
+    Condition: isRegional
+    Value: !Ref RegionalURIStringMemberAccess
+  GStrutsCVE201811766RuleID:
+    Condition: isGlobal
+    Value: !Ref GStrutsCVE201811766Rule
+  RStrutsCVE201811766RuleID:
+    Condition: isRegional
+    Value: !Ref RStrutsCVE201811766Rule
+  GStrutsCVE201811766WebACLID:
+    Condition: isGlobal
+    Value: !Ref GStrutsCVE201811766WebACL
+  RStrutsCVE201811766WebACLID:
+    Condition: isRegional
+    Value: !Ref RStrutsCVE201811766WebACL
